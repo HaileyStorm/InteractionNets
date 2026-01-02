@@ -1,3 +1,6 @@
 
 # Use bd merge for beads JSONL files
 .beads/issues.jsonl merge=beads
+
+# Preserve CRLF test fixture from vendored Bend repo
+Bend/tests/golden_tests/compile_file/crlf.bend -text
