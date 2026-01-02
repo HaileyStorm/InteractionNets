@@ -1,0 +1,10 @@
+.DS_Store
+.env
+.env.*
+.idea/
+.vscode/
+.history/
+*.log
+
+# bv (beads viewer) local config and caches
+.bv/
