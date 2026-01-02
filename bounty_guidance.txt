@@ -1,0 +1,611 @@
+1. Problem restatement + success criteria
+What we’re investigating
+In HVM4 (HigherOrderCO’s Interaction Calculus runtime), the repo recently introduced MOV nodes intended to let a variable be used more than once across different branches without inserting an extra LAM/DUP, reducing interactions. On the provided counterexample program, the DUP-based encoding and MOV-based encoding of @insert produce different outputs under -C1.
+
+The bounty frames two possibilities:
+
+Implementation is wrong (likely)
+
+Concept is wrong (if so, explain why)
+
+We are not proposing a fix/PR here—just narrowing where divergence plausibly originates and how to discriminate hypotheses.
+
+Expected behavior, precisely
+A. “Same output with -C1”
+
+HVM4’s “collapse mode” (-C) produces a stream of collapsed normal forms (CNF) (ordinary lambda terms / values) by repeatedly lifting superpositions and printing branches. The README describes -C10 as “collapses and flattens superpositions (limit to 10 lines)”, so -C1 means “limit to 1 line” (one printed result). (GitHub)
+
+The collapser doc describes CNF readback as:
+
+Quoting removes DUPs (linked vars become quoted vars BJV/BJ0/BJ1), and
+
+Lifting removes SUPs by lifting the first SUP and enumerating branches; same-label SUPs annihilate pairwise; different labels commute and create a cross product. (GitHub)
+
+Therefore, “same output with -C1” operationally means:
+the single printed CNF line must be equivalent between the two encodings, allowing only α-renaming differences as semantically irrelevant. (The OTHER REPORT notes the printer uses an alpha name generator; keep that as a working assumption, but confirm in print/name.* / print/term.* if you want to rely on it. VERIFY.)
+
+Important nuance (merge of both reports):
+
+Under -C1, “order doesn’t matter” only in the trivial sense that only one line is printed; but it matters which branch becomes “the first printed line.” So any change in collapse traversal / priority / branch ordering can manifest as an output mismatch even if the set of branches would match at higher -C.
+
+The collapser doc says single-threaded runs pop FIFO within each key bucket “for deterministic ordering.” (GitHub)
+So, for investigation, treat -T1 (if supported) as part of the success definition: “same first CNF line under deterministic single-thread collapse.” (The OTHER REPORT recommends -T1; confirm CLI flag name in main.c / README; VERIFY.)
+
+B. “< 50k interactions”
+
+The bounty wants the MOV-optimized version to halt in < 50,000 interactions on the target program.
+
+The OTHER REPORT states: “In HVM4, each primitive graph rewrite increments a global counter ITRS; shown by -s stats output; collapse may call wnf and thus may contribute to the same counter.” Keep that model; verify exact counter name and where it is incremented in clang/wnf/* (VERIFY).
+
+We can ground one piece: the README says -s “shows performance stats,” which is how the interaction count is typically observed in practice. (GitHub)
+
+The collapser doc states cnf reduces to WNF before lifting a SUP. That implies collapse/readback can trigger evaluation work (and thus potentially interaction-count increments, depending on implementation). (GitHub)
+
+Working success criteria (merged):
+
+Under identical runtime settings (ideally deterministic single-thread), @insert_A and @insert_B yield the same single printed CNF line under -C1, up to α-renaming. (GitHub)
+
+The MOV-optimized variant completes with < 50k interactions as reported by -s stats (assuming the “interactions” metric is the one the bounty cares about; validate whether it includes collapse-triggered WNF work). (GitHub)
+
+2. High-leverage sources to read (docs + code search targets)
+This section merges both reports’ source lists and adds a concrete search plan. Nothing here asserts “the bug is in X”; these are high-leverage inspection points.
+
+Docs (read first, in this order)
+README (build/run/flags/stats/collapse limit)
+
+Confirms -C10 is “collapse and flatten superpositions (limit to 10 lines)” and -s is stats. (GitHub)
+
+Use it to interpret what -C1 means in terms of observable output.
+
+Core language grammar (docs/hvm4/core.md)
+
+Confirms surface constructs: Dup "! x &L = v; t", Mov "% x = v; t", superposition &L{a,b}, etc. (GitHub)
+
+Critically:
+
+“Variables are affine: each variable is used at most once.”
+
+“MOV-bound variables are linear and may appear multiple times; the parser does not enforce branch separation.” (GitHub)
+
+“Variables are global: a variable can occur outside its binder’s lexical scope.” (GitHub)
+These lines directly motivate several hypotheses (semantic mismatch / desugaring surprises).
+
+Memory layout + substitution model (docs/hvm4/memory.md)
+
+Term pointer layout: SUB | TAG | EXT | VAL. (GitHub)
+
+Defines linked vars: VAR, DP0/DP1 (dup vars, with label in EXT), and GOT (mov var). (GitHub)
+
+Defines substitution cells: when a linked binder interacts, its slot becomes a SUB cell that linked vars must read. (GitHub)
+
+Distinguishes DUP/MOV terms vs DUP/MOV nodes (shared expr slot pointed to by DP0/DP1 or GOT). (GitHub)
+This is foundational for any “rewiring is wrong” hypothesis.
+
+Collapser / CNF readback (docs/hvm4/collapser.md)
+
+cnf: reduce to WNF then lift the first SUP and return. (GitHub)
+
+eval_collapse: breadth-first traversal with a keyed queue; SUP increases key, INC decreases key; deterministic ordering in single-thread (FIFO within key bucket). (GitHub)
+
+Label semantics: same-label annihilation vs different-label cross product. (GitHub)
+These details are essential to separate “evaluator divergence” vs “readback artifact.”
+
+Interaction rules (spec)
+
+DUP-SUP: annihilate if labels match; otherwise distribute and reconstruct. (GitHub)
+
+DUP-LAM: duplicates lambda by creating two lambdas and wiring binder var to &L{...}. (GitHub)
+
+MOV-SUP: pushes MOV into branches by creating %A=x; %B=y; K ← &L{A,B} (no label comparison). (GitHub)
+
+Also read the rest of docs/hvm4/interactions/* (MOV-LAM, MOV-NOD, MOV-RED, MOV-DRY/NAM, etc.)—the OTHER REPORT lists these as key, but we didn’t open them here. Treat as high leverage.
+
+Theory note (docs/theory/interaction_calculus.md)
+
+Use it as “physics”: the canonical interactions and intended meaning (especially around DUP/SUP/labels), to sanity-check whether MOV has side conditions that aren’t being enforced.
+
+Runtime / evaluator / printer code: where to look (search plan)
+We may not know the exact filenames in advance, but the repo is organized around a C runtime under clang/. Use a code search for these strings (the OTHER REPORT suggests many of them):
+
+Primary search tokens (high ROI)
+
+MOV, GOT, DUP, DP0, DP1, SUP, SUB
+
+wnf_mov_, wnf_dup_ (especially *_sup, *_lam, *_nod, *_mov)
+
+heap_subst_var, heap_subst_cop (names referenced in the OTHER REPORT; confirm exact names in code)
+
+cnf(, eval_collapse, collapse, show_itrs, ITRS (counter name VERIFY)
+
+print_term, print/name, alpha (printer α-renaming behavior VERIFY)
+
+DEBUG, -d (debug flag existence VERIFY)
+
+-T, threads, wspq (collapse queue is clang/data/wspq.c per collapser doc) (GitHub)
+
+Likely locations (treat as “likely,” not guaranteed)
+
+clang/wnf/ — WNF evaluator + per-rule files (OTHER REPORT says one rule per file, and wnf/_.c stack machine). VERIFY
+
+clang/cnf/_.c — CNF logic (cnf) (explicitly referenced in collapser doc). (GitHub)
+
+clang/eval/collapse.c — collapse traversal / printing (explicitly referenced in collapser doc). (GitHub)
+
+Heap substitution / indirections: clang/heap/* (names VERIFY)
+
+Printer: print/term.c, print/name.c (OTHER REPORT) VERIFY
+
+Stats reporting: main.c / wnf/itrs_* (OTHER REPORT) VERIFY
+
+Tests / harness
+
+./test/_all_.sh exists per README; use it to ensure changes don’t regress other behavior. (GitHub)
+
+3. Hypotheses (categorized) + what evidence would confirm/refute
+Below is a merged, non-committal hypothesis set. For each: (i) prediction, (ii) what to inspect/instrument, (iii) why plausible.
+
+1) Rule-spec mismatch (MOV rules not semantically equivalent to DUP in all contexts)
+Hypothesis 1.1 — MOV is only correct under side-conditions that the language/parser doesn’t enforce.
+
+Why plausible: Core doc explicitly says MOV-bound variables “may appear multiple times” and the parser “does not enforce branch separation.” (GitHub)
+If MOV is only intended for “different branches only,” but the runtime allows repeated use in the same branch, that can be a semantic mismatch.
+
+Predicts: You can construct small examples where %x=...; ... x ... x ... changes meaning vs a corresponding !x &L=...; ... x₀ ... x₁ ..., especially around SUP/labels.
+
+Inspect: Compare MOV interaction rules to DUP interaction rules around SUP/labels; see whether MOV implicitly assumes “one use per branch.”
+
+Instrument: Detect multi-use patterns of GOT in the same collapse branch; log whether GOT is reached twice without passing through distinct SUP branches.
+
+Hypothesis 1.2 — Label semantics make MOV≠DUP around superpositions.
+
+Why plausible:
+
+DUP-SUP explicitly checks whether L == R and either annihilates pairwise or commutes to create cross-products. (GitHub)
+
+MOV-SUP has no label comparison and simply rewraps branches. (GitHub)
+If the intended equivalence relies on annihilation/commutation behavior, MOV may fail to replicate that without additional machinery.
+
+Predicts: Differences appear when a value being “moved” contains/produces &L{...} that would have interacted with a DUP label (or with other SUPs) in the DUP encoding.
+
+Inspect: In the failing test, identify whether o / i / ins end up applied to a structure containing SUPs with labels that match labels introduced by DUP in the control encoding.
+
+Instrument: Log every encounter of SUP under a GOT evaluation: label values, nesting depth, and whether the DUP encoding would have taken the L==R path.
+
+Hypothesis 1.3 — MOV’s sharing merges branches that should remain independent (branch independence violation).
+
+Why plausible: The OTHER REPORT: “DUP enforces branch separation (x₀/x₁), MOV shares one instance.” That’s the design intent, but it can be invalid if computation relies on independent residuals per branch.
+
+Predicts: Under full -C (no limit), DUP version yields multiple results; MOV yields fewer / merged / structurally different results.
+
+Inspect/experiment: Run with unbounded collapse (-C without small limit) and compare the number/shape of printed branches.
+
+2) Rule implementation bug (MOV rewires incorrectly / SUB mishandling / node-vs-term confusion)
+Hypothesis 2.1 — One of wnf_mov_* rewrites is wired wrong (wrong ports/fields, missing substitution, wrong allocation).
+
+Why plausible: Bounty statement says the MOV implementation is AI-generated and unreviewed; MOV is newer/less tested.
+
+Predicts: Raw net/term differs before collapse; or MOV run contains “impossible leftovers” (un-substituted GOT/MOV nodes) where DUP run does not.
+
+Inspect: Compare each MOV rule implementation against its doc counterpart and the corresponding DUP rule, especially: MOV-SUP, MOV-LAM, MOV-NOD, MOV-MOV, and any interaction with RED, DRY, NAM.
+
+Instrument: Log when each rule fires with enough info to reconstruct reconnections:
+
+rule name, binder location, tag of WHNF, label (if any), and the substituted value.
+
+Hypothesis 2.2 — SUB cell invariants violated for MOV (e.g., GOT reads stale slot, or substitution cycles).
+
+Why plausible: Memory model relies on in-place substitution cells (SUB bit) for linked vars (VAR/DP0/DP1/GOT). (GitHub)
+A small bug in substituting MOV nodes could create aliasing, lost updates, or cycles.
+
+Predicts: Infinite pointer-chasing / stuckness / nondeterministic behavior; output differences sensitive to evaluation order.
+
+Inspect: heap_subst_var-like function paths (OTHER REPORT) and the code that dereferences SUB cells for GOT.
+
+Instrument: Log every SUB write (loc -> value) and optionally add cycle detection / chase-depth counters in debug mode.
+
+Hypothesis 2.3 — Wrong handling of MOV term vs MOV node (shared expr slot)
+
+Why plausible: Memory doc explicitly distinguishes MOV term [expr, body] vs MOV node (expr slot pointed by GOT). (GitHub)
+Confusing these can cause “substitute body instead of expr” or vice versa.
+
+Predicts: GOT sometimes points to something that still has a body, or MOV binder never resolves, or resolves to wrong component.
+
+Inspect: Wherever a GOT variable is evaluated, verify it targets the expr slot and that slot becomes a SUB cell after the interaction.
+
+3) Desugaring mismatch (the two source programs aren’t actually equivalent after parsing/core lowering)
+Hypothesis 3.1 — The ! vs % change is not the only difference after desugaring.
+
+Why plausible: HVM4 has parser sugar (auto-dups, cloned binders, fork sugar, etc. per project context-dump). Also variables are “global” and scopeless. (GitHub)
+
+Predicts: Core ASTs differ in more than just MOV-vs-DUP binder choice (extra DUPs, different labels, different binder structure).
+
+Inspect: Dump the parsed core term for each version (if the tool has a flag; otherwise add a temporary print right after parse). Compare α-normalized core, including labels.
+
+Instrument: Print the desugared core around the relevant region:
+
+For @insert_B, % f = o and % k = i—ensure f/k are truly GOT-bound and not ordinary affine VARs.
+
+Hypothesis 3.2 — Branch separation is assumed by the programmer but not guaranteed by the syntax.
+
+Why plausible: Core doc: parser doesn’t enforce “different branches only” for MOV variables. (GitHub)
+
+Predicts: A MOV-bound name is reused in a way that violates MOV’s intended semantics (even if the programmer meant “across branches”).
+
+Inspect: Identify all occurrences of f and k in @insert_B after desugaring; check whether they are reached in the same branch context.
+
+4) Readback/collapse artifact (evaluator equivalent, CNF differs due to collapse behavior or quoting)
+Hypothesis 4.1 — Both encodings reduce to extensionally equivalent graphs, but CNF differs due to SUP lifting / traversal order.
+
+Why plausible: Collapser lifts the first SUP and returns; enumeration is BFS with a keyed queue; branch order can differ if keys differ or if multi-threaded. (GitHub)
+
+Predicts: If you run with larger -C limits, the set of results might match even if the first differs; or -T1 changes the first printed line.
+
+Inspect/experiment: Compare runs under -C1, -C2, -C10, and unbounded collapse. See if mismatch is only “which line appears first.”
+
+Instrument: Log collapse queue operations (key, enqueue/dequeue order) and which SUP was “first lifted.”
+
+Hypothesis 4.2 — Collapse mishandles MOV-related quoted vars (BJM) or leftover MOV/GOT structures.
+
+Why plausible: Memory doc mentions quoted mov vars BJM. (GitHub)
+If collapse or printing mishandles that case, output can differ even if runtime graph is “fine.”
+
+Predicts: SNF (non-collapsed print) matches between encodings, but CNF differs; or CNF output contains unexpected artifacts in MOV version (e.g., leftover superpositions not flattened).
+
+Inspect: cnf handling of MOV binders / GOT / BJM cases (in clang/cnf/_.c per collapser doc). (GitHub)
+
+Instrument: Add logging when collapse encounters MOV/GOT/BJM forms; verify that quoting occurs as intended.
+
+5) Interaction counting artifact (metric mismatch: interactions vs admin work vs collapse-triggered work)
+Hypothesis 5.1 — “<50k interactions” is measured differently than expected (includes collapse-triggered reductions or excludes some admin).
+
+Why plausible: Collapser doc: cnf reduces to WNF. (GitHub)
+The OTHER REPORT notes the collapse procedure calls the reducer internally on-demand (so interactions can occur during readback), and suggests assuming “total interactions at end of run.”
+
+Predicts: MOV reduces “core interactions” but increases admin or collapse-triggered interactions, so reported total doesn’t improve as expected.
+
+Inspect: Where interaction counters increment (VERIFY actual variable names), and whether collapse invokes WNF with counting enabled.
+
+Instrument: Separate counters: “WNF interactions during eval” vs “WNF interactions during collapse,” plus “admin steps” if available.
+
+6) Concurrency / atomicity issue (if multi-threaded)
+Hypothesis 6.1 — MOV introduces shared structure that triggers a race in parallel evaluation.
+
+Why plausible: MOV increases sharing; shared nodes increase contention; a race in SUB writes/reads could yield nondeterminism.
+
+Predicts: Output mismatch is nondeterministic across runs or disappears under single-thread.
+
+Inspect/experiment: Run with a single thread (OTHER REPORT recommends -T1; VERIFY flag), and run multiple times to check determinism.
+
+Instrument: Add assertions on SUB cell transitions; detect torn writes or concurrent substitutions.
+
+4. No-code experiments to run first
+These are merged from both reports and intentionally require no code changes.
+
+Baseline reproducibility + observation
+Run both encodings with identical flags and deterministic settings
+
+Suggested: -C1 -s plus single-thread if supported (OTHER REPORT suggests -T1; VERIFY).
+
+Record:
+
+the printed CNF line (the one line under -C1)
+
+the interactions count from stats (via -s) (GitHub)
+
+whether behavior is deterministic across repeated runs.
+
+Compare -C1 vs larger collapse limits
+
+Run: -C1, -C2, -C10 (README shows -C10 usage). (GitHub)
+
+Goal: determine whether mismatch is only “first line differs” or “the branch sets differ.”
+
+Run collapse with full enumeration
+
+Run with -C at a high limit (or no limit if supported; VERIFY) to enumerate all branches.
+
+If DUP prints multiple lines and MOV prints fewer/different lines, it strongly suggests a semantic difference around SUP handling.
+
+Separate “evaluator divergence” from “collapse/readback divergence”
+Compare outputs without collapse
+
+OTHER REPORT: “Run without -C and print the result term directly (strong normal form).”
+
+Interpretation:
+
+If SNF outputs already differ → divergence occurs in WNF/SNF reduction rules.
+
+If SNF outputs match but CNF differs → likely collapse/readback/quoting/branch-order issue.
+
+Determinism / concurrency isolation
+Force single-threaded execution
+
+OTHER REPORT recommends -T1 to eliminate scheduling differences (VERIFY).
+
+Collapser doc says single-threaded collapse ordering is deterministic FIFO within key buckets. (GitHub)
+
+Trace-based debugging without code changes (if supported)
+Enable debug logging
+
+OTHER REPORT: “Recompile/run with debug flag -d that prints each enter/apply step.” (VERIFY flag existence; inspect CLI parsing in main.c.)
+
+Use diff tools to find the first place where traces diverge (e.g., DUP-SUP vs MOV-SUP, or a missing annihilation).
+
+Step-by-step / interaction-limited runs
+
+If runtime supports an interaction limit flag or early-abort setting (VERIFY), run both with a small cap to compare partial progress.
+
+Useful if MOV triggers a loop or major blow-up.
+
+Interaction budget / termination diagnosis
+Monitor interaction counts and termination
+
+Use -s stats output to compare interaction counts. (GitHub)
+
+If MOV run is much higher, check whether it’s stuck in a rewrite oscillation (e.g., nested GOT/MOV interactions).
+
+Instrumented collapse observation (still “no code change,” if already supported)
+
+OTHER REPORT: with -s + collapse, results may include an interaction count suffix (e.g., #1234) (VERIFY exact formatting).
+
+Compare whether MOV and DUP reach printing with comparable ITRS values.
+
+5. Instrumentation plan (minimal, surgical)
+This section merges both reports’ instrumentation ideas. It does imply code edits, but the edits are intended to be surgical and easily removable.
+
+A. Log rule firings (MOV + DUP hot spots)
+Add a one-line log at the start of each relevant rule function (names VERIFY), at least:
+
+wnf_mov_sup, wnf_mov_lam, wnf_mov_nod, wnf_mov_mov, plus any MOV rules for RED/DRY/NAM
+
+wnf_dup_sup, wnf_dup_lam, wnf_dup_nod
+Log fields:
+
+rule name
+
+current interaction counter value (ITRS) (VERIFY variable)
+
+tags of involved terms (e.g., SUP/LAM/CTR/NAM/DRY/RED)
+
+for SUP: label L (and for DUP-SUP: both dup_label and sup_label) (GitHub)
+
+heap locations involved (binder slot loc, expr slot loc, etc.) (VERIFY how represented)
+
+Why: A diff of “rule fire sequences” is often the fastest way to locate the first semantic divergence (your own context-dump calls this “high signal”).
+
+B. Verify label handling explicitly
+In DUP-SUP, log which branch is taken: L==R vs L!=R. (GitHub)
+
+In MOV-SUP, log the SUP label being preserved. (GitHub)
+Why: The most plausible “spec mismatch” class hinges on label annihilation/cross-product vs “just preserve sup.”
+
+C. Track substitution (SUB) writes/reads
+Instrument the substitution helpers (names per OTHER REPORT; confirm in code):
+
+heap_subst_var(loc, val) (used by MOV and lambda interactions) (VERIFY exact signature)
+
+heap_subst_cop(...) (used by DUP, which needs to handle two values) (VERIFY)
+Log:
+
+loc being substituted
+
+old value vs new value (tag + loc)
+
+whether SUB bit is set/cleared
+
+Why: Memory model says linked binders are resolved by replacing the binder slot with a SUB cell. (GitHub)
+If MOV isn’t leaving a correct SUB cell behind, GOT occurrences can see inconsistent values.
+
+D. Dump “pre-collapse” graph/term snapshots
+Before calling eval_collapse (collapser entrypoint is clang/eval/collapse.c per docs), print the dynamic term:
+
+Use existing print_term if available (VERIFY).
+
+Do this for both runs right before collapse begins, and compare dumps.
+
+Interpretation:
+
+If dumps differ, divergence happened in evaluator.
+
+If dumps match, divergence likely in collapse/readback/printing.
+
+E. Instrument collapse/readback
+If suspicion points to collapse:
+
+Log in eval_collapse (breadth-first queue operations: key values, enqueue/dequeue) (GitHub)
+
+Log in cnf when:
+
+it reduces to WNF
+
+it lifts the “first SUP” (GitHub)
+
+Specifically log when encountering MOV/GOT/BJM cases (BJM described in memory doc). (GitHub)
+
+F. Add defensive checks (optional)
+SUB chase-depth counters; abort if exceeds threshold (cycle suspicion).
+
+Assertions: “no GOT points to an unresolved MOV node after normalization” (if that invariant is intended).
+
+Use sanitizers (ASAN/UBSAN) to catch UAF/dangling pointers.
+
+G. Comparative “stop-on-first-divergence” harness (from your context-dump)
+Produce two logs (MOV run vs DUP run).
+
+Normalize:
+
+α-renaming if logs include binder names (or log only heap loc IDs).
+
+Stop and dump state at the first mismatch (rule name, loc, label, tag histogram).
+
+6. Reproducer minimization plan
+Goal: shrink the counterexample into a tiny program that still demonstrates MOV vs DUP output mismatch, ideally under ~100 interactions, so it can be traced.
+
+This merges both reports’ minimization approaches.
+
+Step 1: Identify the key pattern to isolate
+In the failing test, the signature pattern is:
+
+DUP version uses a binder like ! ... and later uses x₀ and x₁.
+
+MOV version uses % f = o (and % k = i) and later uses f multiple times.
+
+So isolate a single %-bound function/value used twice, ideally in two branches.
+
+Step 2: Build a toy “dup vs mov” pair of programs
+OTHER REPORT suggested skeletons like:
+
+dup_main = {
+  !x &A = <some simple value>;
+  [x₀, x₁] // use both
+}
+
+mov_main = {
+  %x = <same simple value>;
+  [x, x]   // use twice
+}
+Then vary <some simple value>:
+
+a literal number
+
+a constructor/tuple
+
+a superposition &L{1,2}
+
+Step 3: Bring in superpositions + labels deliberately
+Because labels are a prime suspect, include minimal SUP tests:
+
+Test annihilation vs cross product behavior:
+
+DUP-SUP has special L==R behavior; MOV-SUP does not. (GitHub)
+
+Try examples like:
+
+dup_main = {
+  !y &L = &K{1, 2};  // DUP a superposition with a different label
+  y₀
+}
+
+mov_main = {
+  %y = &K{1, 2};
+  y
+}
+and adjust L vs K to probe the L==R path in DUP-SUP.
+
+Step 4: Reduce complexity of the original test
+Systematically shrink:
+
+Reduce bit-width and replication count:
+
+@bin(16n,512) → smaller (e.g., (4n, 8)), and reduce @rep iterations.
+
+Replace recursion-heavy parts with constants.
+
+Remove numeric ops/matches if not needed.
+
+Each simplification:
+
+Run both encodings under -C1 -s (and single-thread if supported).
+
+Check whether the mismatch persists.
+
+If it disappears, the removed feature was essential—add back a smaller version.
+
+Step 5: Aim for “one superposition site”
+A good minimal reproducer has:
+
+exactly one % binder
+
+exactly one place where the moved value is used twice
+
+exactly one SUP or label interaction site (if that’s the trigger)
+
+This creates a high-signal debugging target for MOV-SUP / MOV-NOD / MOV-LAM equivalence questions.
+
+7. Most likely “first inspection” path (ordered checklist)
+This is the merged ordered checklist (OTHER REPORT + my earlier “first inspection path”), with explicit “eval vs readback” disambiguation.
+
+Reproduce + lock down determinism
+
+Run original test with both encodings under identical flags: -C1 -s (and -T1 if supported; VERIFY).
+
+Confirm mismatch is stable across runs; record exact difference: missing branch? different structure? different constructor tags?
+
+Check whether mismatch is a collapse artifact
+
+Compare -C1 vs -C10 (README example uses -C10). (GitHub)
+
+If mismatch is only “first line differs,” investigate collapse ordering / first lifted SUP. (GitHub)
+
+If the set of results differs, lean toward evaluator semantics or spec mismatch.
+
+Run without collapse to isolate evaluator
+
+Print the (strong) normal form without -C (OTHER REPORT suggestion; confirm printing mode in CLI; VERIFY).
+
+If SNF already differs → evaluator/rule-level divergence (MOV rules or desugaring).
+
+If SNF matches but CNF differs → collapse/quoting/branch-enumeration issue.
+
+Audit MOV rules vs DUP rules at the spec level
+
+Read DUP-SUP and MOV-SUP docs side by side; note label comparison exists only for DUP-SUP. (GitHub)
+
+Read DUP-LAM to understand how duplication introduces &L{...} wiring in the duplicated binder var. (GitHub)
+
+Keep the guardrail: MOV≡DUP is a hypothesis, not assumed true.
+
+Confirm desugaring/core shape (don’t reason from surface only)
+
+Dump parsed core for both versions (or add a temporary print).
+
+Verify that % f = o and % k = i really create GOT-bound variables and that no extra DUP labels are introduced by other sugars.
+
+Remember: variables are global and parser doesn’t enforce branch separation for MOV vars. (GitHub)
+
+Trace a single moved value through execution
+
+Track the analog of “x₀/x₁” in DUP vs “x (GOT)” in MOV:
+
+Does MOV ever create two distinct instances or does it share one?
+
+Is that sharing actually valid given SUP structure and label interactions?
+
+Check for residual MOV/GOT constructs before collapse
+
+Print/dump the graph right before collapse begins.
+
+Ensure GOT resolves through SUB cells as described in memory doc. (GitHub)
+
+Any leftover unresolved GOT/MOV node where it “should have” been substituted is a big red flag (implementation bug).
+
+Trace label propagation where SUP is involved
+
+In DUP runs, identify places where L==R annihilation happens (or would). (GitHub)
+
+In MOV runs, see whether the same structure persists as a SUP because MOV-SUP never compares labels. (GitHub)
+
+If yes, the divergence may be conceptual (MOV missing a necessary label interaction) or an implementation gap.
+
+Only then dig into collapse mechanics
+
+cnf lifts first SUP and returns; enumeration is keyed BFS. (GitHub)
+
+If mismatch looks like “wrong first branch,” instrument queue ordering, SUP lifting site, and check single-thread determinism.
+
+Minimize reproducer and re-run the whole checklist
+
+Once you have a tiny failing case, re-check:
+
+evaluator vs collapse divergence
+
+MOV-SUP / MOV-LAM behavior
+
+label semantics
+
+Closing note (guardrail alignment)
+Keep HVM4 vs HVM2 distinct (no cross-transplanting rules).
+
+Don’t conflate evaluation and readback: CNF stream order is an observed behavior, and -C1 makes “first branch selection” observable. (GitHub)
+
+Treat MOV≡DUP as conditional until proven by either a proof argument with stated side conditions or differential testing across minimized cases.

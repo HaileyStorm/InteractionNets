@@ -1,0 +1,9 @@
+[submodule "Bend"]
+	path = Bend
+	url = https://github.com/HigherOrderCO/Bend
+[submodule "HVM"]
+	path = HVM
+	url = https://github.com/HigherOrderCO/HVM
+[submodule "hvm4"]
+	path = hvm4
+	url = https://github.com/HigherOrderCO/hvm4

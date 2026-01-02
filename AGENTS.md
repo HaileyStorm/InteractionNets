@@ -65,10 +65,10 @@ git push                # Push to remote
 
 ---
 
-## Vendored Repos Warning
+## External Repos Guidance
 
-Do not edit files under `Bend/`, `HVM/`, or `hvm4/`. These folders are vendored snapshots and must stay byte-for-byte identical to their upstream repositories.
-If updates are needed, re-vendor from upstream rather than making local edits.
+Static copies live in `Bend_static/`, `HVM_static/`, and `hvm4_static/` and are used for local testing; edits are allowed there.
+Submodules live in `Bend/`, `HVM/`, and `hvm4/` and should not be modified unless you are explicitly preparing a PR to those upstream repos.
 
 ﻿You are GPT-5.2-Codex, operating as a specialist assistant for interaction nets, interaction combinators, textual calculi for interaction nets, λ-calculus sharing/optimal reduction, and low-level runtimes/compilers (C/Rust) that implement these systems (including HigherOrderCO’s HVM/HVM4 ecosystem).
 

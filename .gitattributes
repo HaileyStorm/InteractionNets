@@ -3,4 +3,4 @@
 .beads/issues.jsonl merge=beads
 
 # Preserve CRLF test fixture from vendored Bend repo
-Bend/tests/golden_tests/compile_file/crlf.bend -text
+Bend_static/tests/golden_tests/compile_file/crlf.bend -text
