@@ -1,0 +1,115 @@
+@IO/Call = (a (b (c (d ((@IO/Call/tag (a (b (c (d e))))) e)))))
+
+@IO/Call/tag = 1
+
+@IO/Done = (a (b ((@IO/Done/tag (a (b c))) c)))
+
+@IO/Done/tag = 0
+
+@IO/MAGIC = (13683217 16719857)
+
+@IO/bind = ((@IO/bind__C2 a) a)
+
+@IO/bind__C0 = (* (b (a c)))
+  & @undefer ~ (a (b c))
+
+@IO/bind__C1 = (* (* (a (b ((c d) (e g))))))
+  & @IO/Call ~ (@IO/MAGIC (a (b ((c f) g))))
+  & @IO/bind ~ (d (e f))
+
+@IO/bind__C2 = (?((@IO/bind__C0 @IO/bind__C1) a) a)
+
+@IO/wrap = a
+  & @IO/Done ~ (@IO/MAGIC a)
+
+@String/Cons = (a (b ((@String/Cons/tag (a (b c))) c)))
+
+@String/Cons/tag = 1
+
+@String/Nil = ((@String/Nil/tag a) a)
+
+@String/Nil/tag = 0
+
+@call = (a (b c))
+  & @IO/Call ~ (@IO/MAGIC (a (b (@call__C0 c))))
+
+@call__C0 = a
+  & @IO/Done ~ (@IO/MAGIC a)
+
+@close = f
+  & @call ~ (e f)
+  & @String/Cons ~ (67 (d e))
+  & @String/Cons ~ (76 (c d))
+  & @String/Cons ~ (79 (b c))
+  & @String/Cons ~ (83 (a b))
+  & @String/Cons ~ (69 (@String/Nil a))
+
+@main = w
+  & @IO/bind ~ (@open ((((s (a u)) (@IO/wrap v)) v) w))
+  & @IO/bind ~ (c ((((n (o (d q))) (r (s t))) t) u))
+  & @unwrap ~ (a {b r})
+  & @read ~ (b c)
+  & @IO/bind ~ (f ((((g (k (* m))) (n (o p))) p) q))
+  & @print ~ (e f)
+  & @unwrap ~ (d e)
+  & @IO/bind ~ (h ((((i i) (k l)) l) m))
+  & @close ~ (g h)
+
+@open = o
+  & @call ~ (d ((m n) o))
+  & @String/Cons ~ (79 (c d))
+  & @String/Cons ~ (80 (b c))
+  & @String/Cons ~ (69 (a b))
+  & @String/Cons ~ (78 (@String/Nil a))
+  & @String/Cons ~ (46 (l m))
+  & @String/Cons ~ (47 (k l))
+  & @String/Cons ~ (76 (j k))
+  & @String/Cons ~ (73 (i j))
+  & @String/Cons ~ (67 (h i))
+  & @String/Cons ~ (69 (g h))
+  & @String/Cons ~ (78 (f g))
+  & @String/Cons ~ (83 (e f))
+  & @String/Cons ~ (69 (@String/Nil e))
+  & @String/Cons ~ (114 (@String/Nil n))
+
+@print = (f h)
+  & @IO/bind ~ (g (@print__C3 h))
+  & @call ~ (e ((1 f) g))
+  & @String/Cons ~ (87 (d e))
+  & @String/Cons ~ (82 (c d))
+  & @String/Cons ~ (73 (b c))
+  & @String/Cons ~ (84 (a b))
+  & @String/Cons ~ (69 (@String/Nil a))
+
+@print__C0 = ((* a) (* a))
+
+@print__C1 = g
+  & @call ~ (e ((1 f) g))
+  & @String/Cons ~ (87 (d e))
+  & @String/Cons ~ (82 (c d))
+  & @String/Cons ~ (73 (b c))
+  & @String/Cons ~ (84 (a b))
+  & @String/Cons ~ (69 (@String/Nil a))
+  & @String/Cons ~ (10 (@String/Nil f))
+
+@print__C2 = (a (* c))
+  & @IO/bind ~ (@print__C1 (((@print__C0 (a b)) b) c))
+
+@print__C3 = ((@print__C2 (@IO/wrap a)) a)
+
+@read = (e f)
+  & @call ~ (d ((e 47) f))
+  & @String/Cons ~ (82 (c d))
+  & @String/Cons ~ (69 (b c))
+  & @String/Cons ~ (65 (a b))
+  & @String/Cons ~ (68 (@String/Nil a))
+
+@test-io = 1
+
+@undefer = (((a a) b) b)
+
+@unwrap = ((@unwrap__C0 a) a)
+
+@unwrap__C0 = (?(((a a) (* (b b))) c) c)
+
+

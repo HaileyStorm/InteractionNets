@@ -1,0 +1,2 @@
+gen-hvm
+tests/golden_tests/cli/warn_and_err.bend

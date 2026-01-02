@@ -1,0 +1,7 @@
+String/concat = @a @b
+  match a {
+    String/nil: b;
+    String/cons: (String/cons a.head (String/concat a.tail b))
+  }
+
+main = (String/concat "ab" "cd")

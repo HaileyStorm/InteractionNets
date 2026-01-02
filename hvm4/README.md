@@ -1,0 +1,45 @@
+# HVM4
+
+HVM4 is a high-performance runtime for the [Interaction Calculus](docs/theory/interaction_calculus.md).
+
+## Building and Running
+
+```bash
+# Build
+cd clang && clang -O2 -o main main.c
+
+# Run a file (use collapse mode by default)
+./clang/main test/file.hvm4 -s -C10
+
+# Run all tests
+./test/_all_.sh
+```
+
+Flags:
+- `-s` shows performance stats
+- `-C10` collapses and flattens superpositions (limit to 10 lines)
+
+## Examples
+
+```hvm
+@main = ((@add 1) 2)
+//3
+```
+
+```hvm
+@main = (&{1, 2} + 10)
+//11
+//12
+```
+
+```hvm
+@main = (! x &A= 3; (x₀ + x₁))
+//6
+```
+
+## Documentation
+
+- Theory: [docs/theory/interaction_calculus.md](docs/theory/interaction_calculus.md)
+- Core language: [docs/hvm4/core.md](docs/hvm4/core.md)
+- Memory layout: [docs/hvm4/memory.md](docs/hvm4/memory.md)
+- Interaction rules: [docs/hvm4/interactions/](docs/hvm4/interactions/)

@@ -1,0 +1,4 @@
+#include "_book_.hvm4"
+@main = #S{&L{#Z{},#S{#Z{}}}}
+//#S{#Z{}}
+//#S{#S{#Z{}}}
