@@ -1,5 +1,14 @@
 <!-- bv-agent-instructions-v1 -->
 
+<!-- codex-project-policy:compression-v1 -->
+## Compression, randomized breadth, and memory
+
+- Give reuse, simplification, and deletion equal consideration to addition. Finish each task with an obsolescence audit covering code, tests, comments, docs, configuration, and tracked work.
+- Remove replaced behavior throughout the owned scope unless a verified compatibility, migration, rollback, history, or provenance obligation requires both; name that obligation and removal gate.
+- Avoid comments that narrate obvious function-body behavior. Remove stale comments and completed TODOs while preserving non-obvious intent, safety, interoperability, and provenance.
+- Use seeded recursive partition search or Verbalized Sampling only for bounded open-ended diversity work. Record universe, coverage, candidate set/path, and draws; never claim uniformity without proof or use it for deterministic gates.
+- Keep memory content separate from reference-recency metadata. Recency may delay compression but never outranks authority, corrections, or explicit retention; GC proposals remain advisory and non-destructive.
+
 ---
 
 ## Beads Workflow Integration
