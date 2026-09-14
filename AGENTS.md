@@ -1,15 +1,10 @@
+The global policy applies. Read <CODEX_HOME>/HARNESS_OPERATIONS.md for conditional provider, privacy, recovery, sentinel, Beads, and host safeguards. Repository-specific InteractionNets guidance follows.
+
+## Model routing
+
+For well-specified implementation, minor bugs, monitoring, facts, and bounded invariant work, prefer the qualified Nous Direct role `nous/deepseek/deepseek-v4.1-flash` at `max` when the shared native-route and privacy requirements in `HARNESS_OPERATIONS.md` are met; otherwise use `gpt-5.6-luna` at `max`. Use `gpt-6-astra` at `medium` for design, architecture, synthesis, and disputed safety or evidence decisions. Keep routine packets fresh and bounded, with no inherited private history and only explicitly approved files, data, and needed commands.
+
 <!-- bv-agent-instructions-v1 -->
-
-<!-- codex-project-policy:compression-v1 -->
-## Compression, randomized breadth, and memory
-
-- Give reuse, simplification, and deletion equal consideration to addition. Finish each task with an obsolescence audit covering code, tests, comments, docs, configuration, and tracked work.
-- Remove replaced behavior throughout the owned scope unless a verified compatibility, migration, rollback, history, or provenance obligation requires both; name that obligation and removal gate.
-- Avoid comments that narrate obvious function-body behavior. Remove stale comments and completed TODOs while preserving non-obvious intent, safety, interoperability, and provenance.
-- Use seeded recursive partition search or Verbalized Sampling only for bounded open-ended diversity work. Record universe, coverage, candidate set/path, and draws; never claim uniformity without proof or use it for deterministic gates.
-- Keep memory content separate from reference-recency metadata. Recency may delay compression but never outranks authority, corrections, or explicit retention; GC proposals remain advisory and non-destructive.
-
----
 
 ## Beads Workflow Integration
 
